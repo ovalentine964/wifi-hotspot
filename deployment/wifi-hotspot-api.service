@@ -1,0 +1,31 @@
+# WiFi Hotspot API Service
+[Unit]
+Description=WiFi Hotspot API (Gunicorn)
+After=network.target postgresql.service
+Requires=postgresql.service
+
+[Service]
+User=hotspot
+Group=hotspot
+WorkingDirectory=/opt/wifi-hotspot
+EnvironmentFile=/opt/wifi-hotspot/.env
+ExecStart=/opt/wifi-hotspot/venv/bin/gunicorn -c gunicorn.conf.py wsgi:app
+ExecReload=/bin/kill -s HUP $MAINPID
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=wifi-hotspot-api
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/opt/wifi-hotspot /var/log
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WiFi Hotspot — Admin</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container admin">
+        <h1>⚙️ Admin Dashboard</h1>
+
+        <div id="login-section">
+            <div class="card">
+                <h2>Admin Login</h2>
+                <input type="text" id="admin-user" placeholder="Username">
+                <input type="password" id="admin-pass" placeholder="Password">
+                <button class="btn" onclick="login()">Login</button>
+                <p id="login-error" class="error"></p>
+            </div>
+        </div>
+
+        <div id="dashboard" style="display:none">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <h3>Total Revenue</h3>
+                    <p id="total-revenue" class="stat-value">—</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Today's Revenue</h3>
+                    <p id="today-revenue" class="stat-value">—</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Active Sessions</h3>
+                    <p id="active-sessions" class="stat-value">—</p>
+                </div>
+                <div class="stat-card">
+                    <h3>VIP Users</h3>
+                    <p id="vip-count" class="stat-value">—</p>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Add VIP User</h2>
+                <input type="text" id="vip-mac" placeholder="MAC Address (AA:BB:CC:DD:EE:FF)">
+                <input type="text" id="vip-phone" placeholder="Phone (optional)">
+                <button class="btn" onclick="addVip()">Add VIP</button>
+                <p id="vip-msg"></p>
+            </div>
+
+            <div class="card">
+                <h2>Manual Payment Confirm</h2>
+                <input type="text" id="confirm-phone" placeholder="Phone number (07XXXXXXXX)">
+                <input type="text" id="confirm-amount" placeholder="Amount (e.g. 50)">
+                <button class="btn" onclick="manualConfirm()">Confirm Payment</button>
+                <p id="confirm-msg"></p>
+            </div>
+
+            <div class="card">
+                <h2>VIP Users</h2>
+                <div id="vip-list"></div>
+                <button class="btn btn-secondary" onclick="loadVips()">Refresh</button>
+            </div>
+
+            <div class="card">
+                <h2>Recent Payments</h2>
+                <div id="recent-payments"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let authHeader = '';
+
+        // Safe text escaping — prevents XSS
+        function esc(str) {
+            if (str == null) return '';
+            const div = document.createElement('div');
+            div.textContent = String(str);
+            return div.innerHTML;
+        }
+
+        function login() {
+            const user = document.getElementById('admin-user').value;
+            const pass = document.getElementById('admin-pass').value;
+            authHeader = 'Basic ' + btoa(`${user}:${pass}`);
+            loadDashboard();
+        }
+
+        async function loadDashboard() {
+            try {
+                const resp = await fetch('/api/admin/stats', {
+                    headers: { 'Authorization': authHeader }
+                });
+                if (resp.status === 401) {
+                    document.getElementById('login-error').textContent = 'Invalid credentials';
+                    return;
+                }
+                const data = await resp.json();
+                document.getElementById('login-section').style.display = 'none';
+                document.getElementById('dashboard').style.display = 'block';
+                document.getElementById('total-revenue').textContent = 'KSh ' + Number(data.total_revenue).toFixed(2);
+                document.getElementById('today-revenue').textContent = 'KSh ' + Number(data.today_revenue).toFixed(2);
+                document.getElementById('active-sessions').textContent = data.active_sessions;
+                document.getElementById('vip-count').textContent = data.vip_users;
+
+                // Recent payments — build table with textContent-safe cells
+                const table = document.createElement('table');
+                const thead = document.createElement('thead');
+                thead.innerHTML = '<tr><th>Time</th><th>Phone</th><th>MAC</th><th>Amount</th><th>Status</th></tr>';
+                table.appendChild(thead);
+                const tbody = document.createElement('tbody');
+                data.recent_payments.forEach(p => {
+                    const tr = document.createElement('tr');
+                    const cells = [
+                        new Date(p.created_at).toLocaleString(),
+                        p.phone_number,
+                        p.mac_address,
+                        'KSh ' + p.amount,
+                        p.status
+                    ];
+                    cells.forEach(text => {
+                        const td = document.createElement('td');
+                        td.textContent = text || '';
+                        tr.appendChild(td);
+                    });
+                    tbody.appendChild(tr);
+                });
+                table.appendChild(tbody);
+                const container = document.getElementById('recent-payments');
+                container.innerHTML = '';
+                container.appendChild(table);
+
+                loadVips();
+            } catch (e) {
+                document.getElementById('login-error').textContent = 'Connection error';
+            }
+        }
+
+        async function loadVips() {
+            const resp = await fetch('/api/admin/vip', {
+                headers: { 'Authorization': authHeader }
+            });
+            const data = await resp.json();
+            const container = document.getElementById('vip-list');
+            container.innerHTML = '';
+            if (!data.vips || data.vips.length === 0) {
+                container.textContent = 'No VIP users';
+                return;
+            }
+            data.vips.forEach(v => {
+                const row = document.createElement('div');
+                row.className = 'vip-row';
+
+                const macSpan = document.createElement('span');
+                macSpan.textContent = v.mac_address;
+
+                const phoneSpan = document.createElement('span');
+                phoneSpan.textContent = v.phone_number || '—';
+
+                const btn = document.createElement('button');
+                btn.className = 'btn btn-small btn-danger';
+                btn.textContent = 'Remove';
+                btn.addEventListener('click', () => removeVip(v.mac_address));
+
+                row.appendChild(macSpan);
+                row.appendChild(phoneSpan);
+                row.appendChild(btn);
+                container.appendChild(row);
+            });
+        }
+
+        async function addVip() {
+            const mac = document.getElementById('vip-mac').value.trim();
+            const phone = document.getElementById('vip-phone').value.trim();
+            if (!/^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$/.test(mac)) {
+                document.getElementById('vip-msg').textContent = 'Invalid MAC format (XX:XX:XX:XX:XX:XX)';
+                return;
+            }
+            const resp = await fetch('/api/admin/vip', {
+                method: 'POST',
+                headers: { 'Authorization': authHeader, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mac_address: mac, phone_number: phone || undefined })
+            });
+            const data = await resp.json();
+            document.getElementById('vip-msg').textContent = data.message || data.error;
+            loadVips();
+        }
+
+        async function removeVip(mac) {
+            const resp = await fetch('/api/admin/vip/remove', {
+                method: 'POST',
+                headers: { 'Authorization': authHeader, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mac_address: mac })
+            });
+            const data = await resp.json();
+            document.getElementById('vip-msg').textContent = data.message || data.error;
+            loadVips();
+        }
+
+        async function manualConfirm() {
+            const phone = document.getElementById('confirm-phone').value.trim();
+            const amount = document.getElementById('confirm-amount').value.trim();
+            if (!phone || !amount) {
+                document.getElementById('confirm-msg').textContent = 'Phone and amount required';
+                return;
+            }
+            const resp = await fetch('/api/admin/confirm', {
+                method: 'POST',
+                headers: { 'Authorization': authHeader, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ phone_number: phone, amount: parseFloat(amount) })
+            });
+            const data = await resp.json();
+            document.getElementById('confirm-msg').textContent = data.message || data.error;
+        }
+    </script>
+</body>
+</html>

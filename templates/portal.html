@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WiFi Hotspot</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <h1>📶 WiFi Hotspot</h1>
+            <p class="subtitle">Connect to the internet</p>
+
+            <div id="step-1" class="step active">
+                <h2>1. Select a Plan</h2>
+                <div class="plans">
+                    {% for plan in plans %}
+                    <label class="plan-option">
+                        <input type="radio" name="plan" value="{{ plan.id }}" data-price="{{ plan.price }}" data-name="{{ plan.name }}">
+                        <span class="plan-card">
+                            <strong>{{ plan.name }}</strong>
+                            <span class="price">KSh {{ plan.price }}</span>
+                            <span class="duration">{{ plan.duration_hours }} hour{{ 's' if plan.duration_hours > 1 }}</span>
+                        </span>
+                    </label>
+                    {% endfor %}
+                </div>
+                <button id="btn-next" class="btn" disabled>Continue</button>
+            </div>
+
+            <div id="step-2" class="step">
+                <h2>2. Enter Your Phone Number</h2>
+                <input type="tel" id="phone" placeholder="07XXXXXXXX" maxlength="11">
+                <p class="hint">M-Pesa number to pay from</p>
+                <div id="summary" class="summary"></div>
+                <button id="btn-pay" class="btn">Pay with M-Pesa</button>
+                <button id="btn-back" class="btn btn-secondary">Back</button>
+            </div>
+
+            <div id="step-3" class="step">
+                <h2>⏳ Waiting for Payment...</h2>
+                <div class="spinner"></div>
+                <p>Check your phone for the M-Pesa prompt.</p>
+                <p id="payment-status"></p>
+            </div>
+
+            <div id="step-4" class="step">
+                <h2>✅ Connected!</h2>
+                <p>You now have internet access.</p>
+                <p id="session-info"></p>
+            </div>
+
+            <div id="error-msg" class="error"></div>
+        </div>
+    </div>
+
+    <script>
+        let selectedPlan = null;
+        let macAddress = '';
+
+        // Try to get MAC from captive portal (some platforms provide it)
+        const params = new URLSearchParams(window.location.search);
+        macAddress = params.get('mac') || '';
+
+        // Plan selection
+        document.querySelectorAll('input[name="plan"]').forEach(radio => {
+            radio.addEventListener('change', () => {
+                selectedPlan = {
+                    id: parseInt(radio.value),
+                    price: radio.dataset.price,
+                    name: radio.dataset.name
+                };
+                document.getElementById('btn-next').disabled = false;
+            });
+        });
+
+        document.getElementById('btn-next').addEventListener('click', () => {
+            showStep(2);
+            const summary = document.getElementById('summary');
+            summary.innerHTML = `<p>Plan: <strong>${selectedPlan.name}</strong> — KSh ${selectedPlan.price}</p>`;
+        });
+
+        document.getElementById('btn-back').addEventListener('click', () => showStep(1));
+
+        document.getElementById('btn-pay').addEventListener('click', async () => {
+            const phone = document.getElementById('phone').value.trim();
+            if (!/^0[0-9]{9}$/.test(phone)) {
+                showError('Please enter a valid phone number (07XXXXXXXX)');
+                return;
+            }
+            showError('');
+
+            try {
+                const resp = await fetch('/api/register', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-API-Key': getApiKey()
+                    },
+                    body: JSON.stringify({
+                        mac_address: macAddress || generateMac(),
+                        phone_number: phone,
+                        plan_id: selectedPlan.id
+                    })
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    showStep(3);
+                    pollStatus(macAddress || generateMac());
+                } else {
+                    showError(data.error || 'Registration failed');
+                }
+            } catch (e) {
+                showError('Network error. Please try again.');
+            }
+        });
+
+        async function pollStatus(mac) {
+            const statusEl = document.getElementById('payment-status');
+            let attempts = 0;
+            const interval = setInterval(async () => {
+                attempts++;
+                if (attempts > 120) { // 2 minutes
+                    clearInterval(interval);
+                    showError('Payment timeout. Please try again.');
+                    showStep(1);
+                    return;
+                }
+                try {
+                    const resp = await fetch(`/api/status/${mac}`, {
+                        headers: { 'X-API-Key': getApiKey() }
+                    });
+                    const data = await resp.json();
+                    if (data.authorized) {
+                        clearInterval(interval);
+                        showStep(4);
+                        document.getElementById('session-info').textContent =
+                            data.session ? `Expires: ${new Date(data.session.expires_at).toLocaleString()}` : '';
+                    } else {
+                        statusEl.textContent = `Checking... (${attempts})`;
+                    }
+                } catch (e) {
+                    // keep polling
+                }
+            }, 1000);
+        }
+
+        function showStep(n) {
+            document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+            document.getElementById(`step-${n}`).classList.add('active');
+        }
+
+        function showError(msg) {
+            document.getElementById('error-msg').textContent = msg;
+        }
+
+        function getApiKey() {
+            return '{{ api_key }}';
+        }
+
+        function generateMac() {
+            // Generate a random MAC for demo/testing
+            if (!window._mac) {
+                const hex = () => Math.floor(Math.random() * 256).toString(16).padStart(2, '0');
+                window._mac = `${hex()}:${hex()}:${hex()}:${hex()}:${hex()}:${hex()}`.toUpperCase();
+            }
+            return window._mac;
+        }
+    </script>
+</body>
+</html>

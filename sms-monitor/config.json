@@ -1,0 +1,14 @@
+{
+    "api_url": "https://your-oracle-cloud.com",
+    "api_key": "your-secret-api-key",
+    "poll_interval": 5,
+    "owner_phone": "0712345678",
+    "log_file": "/data/data/com.termux/files/home/sms_monitor.log",
+    "state_file": "/data/data/com.termux/files/home/sms_state.json",
+    "retry_interval": 30,
+    "max_retries": 5,
+    "connect_timeout": 10,
+    "status_file": "/data/data/com.termux/files/home/sms_status.json",
+    "heartbeat_file": "/data/data/com.termux/files/home/sms_heartbeat.txt",
+    "queue_file": "/data/data/com.termux/files/home/sms_queue.json"
+}

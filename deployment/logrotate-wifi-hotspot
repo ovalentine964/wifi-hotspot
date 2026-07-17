@@ -1,0 +1,16 @@
+/var/log/wifi-hotspot/*.log
+/var/log/dnsmasq.log
+{
+    daily
+    missingok
+    rotate 7
+    compress
+    delaycompress
+    notifempty
+    create 0640 root adm
+    sharedscripts
+    postrotate
+        # Signal dnsmasq to reopen its log file
+        [ -f /var/run/dnsmasq.pid ] && kill -USR2 $(cat /var/run/dnsmasq.pid) 2>/dev/null || true
+    endscript
+}

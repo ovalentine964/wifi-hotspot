@@ -1,0 +1,30 @@
+# WiFi Hotspot Scheduler Service
+# Handles: auto-expire sessions, router MAC sync, payment reconciliation
+[Unit]
+Description=WiFi Hotspot Scheduler (auto-expire + router sync)
+After=network.target postgresql.service wifi-hotspot-api.service
+
+[Service]
+User=hotspot
+Group=hotspot
+WorkingDirectory=/opt/wifi-hotspot
+EnvironmentFile=/opt/wifi-hotspot/.env
+ExecStart=/opt/wifi-hotspot/venv/bin/python scheduler.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=wifi-hotspot-scheduler
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/opt/wifi-hotspot /var/log
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target
